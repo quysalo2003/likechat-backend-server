@@ -2,15 +2,78 @@ const express = require('express');
 const cors = require('cors');
 const bodyParser = require('body-parser');
 const axios = require('axios');
+const mongoose = require('mongoose'); // Đập thêm thư viện database kết nối Cloud vĩnh viễn
 
 const app = express();
 app.use(cors());
 app.use(bodyParser.json());
 
+// =======================================================
+// 🚀 CẤU HÌNH ĐÃ ĐỒNG BỘ THÔNG TIN THẬT 100% CỦA SẾP 🚀
+// =======================================================
 const TELEGRAM_TOKEN = "8899021077:AAExBxaUDO7iXXAr6Rh9cDTpkLPAG3Rd4Ks"; 
 const TELEGRAM_CHAT_ID = "6661039756";
 const MK_ADMIN_MUON_DAT = "cfquyy123"; 
 
+// 🔑 LINK DATABASE MONGODB ATLAS CHÍNH CHỦ CỦA SẾP QUÝ (RÁP TỪ SCREENSHOT 72)
+const MONGO_URI = "mongodb+srv://quyhapy2003_db_user:QQ9Gr9VGJYfMuOUo@cluster0.11cwyvm.mongodb.net/likechat?retryWrites=true&w=majority&appName=Cluster0";
+
+mongoose.connect(MONGO_URI)
+  .then(() => console.log("🔥 Đã kết nối Database MongoDB Atlas vĩnh viễn! Bật tắt server thoải mái không sợ mất dữ liệu!"))
+  .catch(err => console.error("🚨 Lỗi kết nối database rồi sếp ơi:", err.message));
+
+// =======================================================
+// 🗄️ ĐỊNH NGHĨA CÁC BẢNG LƯU TRỮ TRÊN CLOUD DATABASE
+// =======================================================
+
+// 1. Bảng lưu trữ Thành viên
+const UserSchema = new mongoose.Schema({
+    username: { type: String, required: true, unique: true },
+    password: { type: String, required: true },
+    email: { type: String },
+    balance: { type: Number, default: 0 }
+});
+const User = mongoose.model('User', UserSchema);
+
+// 2. Bảng lưu trữ Đơn hàng (Cả MXH và Premium)
+const OrderSchema = new mongoose.Schema({
+    orderId: String,
+    username: String,
+    type: String,
+    service: String,
+    link: String,
+    quantity: Number,
+    total: String,
+    status: { type: String, default: 'Chờ duyệt' },
+    time: { type: String, default: () => new Date().toLocaleString('vi-VN') }
+});
+const Order = mongoose.model('Order', OrderSchema);
+
+// 3. Bảng lưu trữ Yêu cầu nạp tiền
+const DepositSchema = new mongoose.Schema({
+    depositId: String,
+    username: String,
+    amount: Number,
+    status: { type: String, default: 'Chờ duyệt' },
+    time: { type: String, default: () => new Date().toLocaleString('vi-VN') }
+});
+const Deposit = mongoose.model('Deposit', DepositSchema);
+
+// Khởi tạo tài khoản ADMIN mặc định lên thẳng Database nếu chưa tồn tại
+async function initAdmin() {
+    try {
+        const adminExist = await User.findOne({ username: "ADMIN" });
+        if (!adminExist) {
+            await User.create({ username: "ADMIN", password: MK_ADMIN_MUON_DAT, balance: 99999999, email: "admin@likechat.site" });
+            console.log("👑 Đã thiết lập tài khoản ADMIN mặc định trên Database Cloud thành công!");
+        }
+    } catch (err) {
+        console.error("Lỗi khởi tạo Admin:", err.message);
+    }
+}
+initAdmin();
+
+// Hàm gửi tin nhắn tự động về Telegram nhóm/chat của mày
 async function sendToTelegram(message) {
     try {
         const url = `https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`;
@@ -20,128 +83,193 @@ async function sendToTelegram(message) {
     }
 }
 
-// Bộ nhớ lưu trữ dữ liệu tạm thời (Database giả lập)
-const users = {
-    "ADMIN": { password: MK_ADMIN_MUON_DAT, balance: 99999999, email: "admin@likechat.site" }
-};
-const deposits = []; // Lưu lịch sử nạp tiền
-const orders = [];   // Lưu lịch sử đơn hàng mxh + premium
+// API ĐỒNG BỘ VÍ TIỀN REALTIME CHO KHÁCH KHI CHUYỂN TAB TRÊN WEB
+app.get('/api/user/:username', async (req, res) => {
+    const u = req.params.username.toUpperCase().trim();
+    try {
+        const user = await User.findOne({ username: u });
+        if (user) {
+            return res.json({ success: true, balance: user.balance });
+        }
+        return res.json({ success: false, message: "Không tìm thấy user" });
+    } catch(e) { res.json({ success: false }); }
+});
 
-// API ĐĂNG KÝ
+// API ĐĂNG KÝ THÀNH VIÊN (LƯU THẲNG VÀO DATABASE)
 app.post('/api/register', async (req, res) => {
     const { username, password, email } = req.body;
     const u = username.toUpperCase().trim();
-    if (users[u]) return res.json({ success: false, message: "Tài khoản đã tồn tại!" });
     
-    users[u] = { password, balance: 0, email };
-    await sendToTelegram(`🔔 CÓ THÀNH VIÊN MỚI!\n👤 Tài khoản: ${u}\n📧 Email: ${email}`);
-    return res.json({ success: true, message: "Đăng ký thành công!" });
+    try {
+        const userExist = await User.findOne({ username: u });
+        if (userExist) return res.json({ success: false, message: "Tài khoản đã tồn tại!" });
+        
+        await User.create({ username: u, password, email, balance: 0 });
+        await sendToTelegram(`🔔 CÓ THÀNH VIÊN MỚI!\n👤 Tài khoản: ${u}\n📧 Email: ${email}`);
+        return res.json({ success: true, message: "Đăng ký thành công!" });
+    } catch (err) {
+        return res.json({ success: false, message: "Lỗi hệ thống đăng ký!" });
+    }
 });
 
-// API ĐĂNG NHẬP
-app.post('/api/login', (req, res) => {
+// API ĐĂNG NHẬP HỆ THỐNG
+app.post('/api/login', async (req, res) => {
     const { username, password } = req.body;
     const u = username.toUpperCase().trim();
-    if (!users[u] || users[u].password !== password) {
-        return res.json({ success: false, message: "Sai tài khoản hoặc mật khẩu!" });
+    
+    try {
+        const user = await User.findOne({ username: u });
+        if (!user || user.password !== password) {
+            return res.json({ success: false, message: "Sai tài khoản hoặc mật khẩu!" });
+        }
+        return res.json({ success: true, username: u, balance: user.balance });
+    } catch (err) {
+        return res.json({ success: false, message: "Lỗi hệ thống đăng nhập!" });
     }
-    return res.json({ success: true, username: u, balance: users[u].balance });
 });
 
-// API LẤY SỐ DƯ REALTIME (ĐÃ FIX LỖI KHÔNG TRỪ TIỀN TRÊN MÀN HÌNH)
-app.get('/api/user/:username', (req, res) => {
-    const u = req.params.username.toUpperCase().trim();
-    if (!users[u]) return res.json({ success: false, message: "Không tìm thấy user" });
-    return res.json({ success: true, balance: users[u].balance });
-});
-
-// API ĐẶT ĐƠN MXH
+// API ĐẶT ĐƠN TĂNG LIKE/FOLLOW (XỬ LÝ TRỪ TIỀN VÀ LƯU LỊCH SỬ CHẾT)
 app.post('/api/order-mxh', async (req, res) => {
     const { username, platform, service, link, quantity, total } = req.body;
     const u = username.toUpperCase().trim();
     const cost = parseInt(total.replace(/[^0-9]/g, ''));
     
-    if (!users[u]) return res.json({ success: false, message: "Tài khoản không tồn tại!" });
-    if (users[u].balance < cost) return res.json({ success: false, message: "Số dư không đủ!" });
-    
-    users[u].balance -= cost;
-    
-    // Lưu vào lịch sử hệ thống cho Admin nhìn thấy
-    const orderId = "MXH" + Math.floor(Math.random() * 900000 + 100000);
-    const timeNow = new Date().toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' });
-    orders.push({ orderId, username: u, type: platform.toUpperCase(), service, link, quantity, total, status: "Chờ duyệt", time: timeNow });
-
-    const msg = `🛒 ĐƠN HÀNG MXH MỚI: ${u}\n🆔 Mã đơn: ${orderId}\n🌐 Nền tảng: ${platform.toUpperCase()}\n🛠️ Dịch vụ: ${service}\n🔗 Link: ${link}\n📦 SL: ${quantity}\n💰 Tổng tiền: ${total}`;
-    await sendToTelegram(msg);
-    return res.json({ success: true });
+    try {
+        const user = await User.findOne({ username: u });
+        if (!user) return res.json({ success: false, message: "Tài khoản không tồn tại!" });
+        
+        if (user.balance < cost) {
+            return res.json({ success: false, message: `Số dư không đủ! Mày cần thêm ${(cost - user.balance).toLocaleString('vi-VN')} đ để hoàn thành đơn.` });
+        }
+        
+        // Khấu trừ số dư của khách trên database
+        user.balance -= cost;
+        await user.save();
+        
+        // Lưu lịch sử đơn hàng vào database
+        const orderId = "MXH" + Math.floor(100000 + Math.random() * 900000);
+        await Order.create({ orderId, username: u, type: platform.toUpperCase(), service, link, quantity, total, status: 'Đang chạy' });
+        
+        const msg = `🛒 ĐƠN HÀNG MXH MỚI TỪ: ${u}\n` +
+                    `🆔 Mã đơn: ${orderId}\n` +
+                    `🌐 Nền tảng: ${platform.toUpperCase()}\n` +
+                    `🛠️ Dịch vụ: ${service}\n` +
+                    `🔗 Link mục tiêu: ${link}\n` +
+                    `📦 Số lượng: ${quantity}\n` +
+                    `💰 Tổng tiền trừ: ${total}\n` +
+                    `💳 Số dư còn lại: ${user.balance.toLocaleString('vi-VN')} đ`;
+                    
+        await sendToTelegram(msg);
+        return res.json({ success: true, message: "Đơn hàng đã được gửi lên hệ thống!" });
+    } catch (err) {
+        return res.json({ success: false, message: "Lỗi hệ thống tạo đơn!" });
+    }
 });
 
-// API ĐẶT MUA APP PREMIUM (ĐÃ FIX LỖI KHÔNG PHẢN ỨNG)
+// API MUA APP PREMIUM (ĐỒNG BỘ THEO DẠNG CARD MỚI)
 app.post('/api/order-premium', async (req, res) => {
     const { username, service, email, price } = req.body;
     const u = username.toUpperCase().trim();
     const cost = parseInt(price);
 
-    if (!users[u]) return res.json({ success: false, message: "Tài khoản không tồn tại!" });
-    if (users[u].balance < cost) return res.json({ success: false, message: `Số dư không đủ! Cần thêm ${(cost - users[u].balance).toLocaleString('vi-VN')} đ.` });
+    try {
+        const user = await User.findOne({ username: u });
+        if (!user) return res.json({ success: false, message: "Tài khoản không tồn tại!" });
 
-    users[u].balance -= cost;
+        if (user.balance < cost) {
+            return res.json({ success: false, message: `Số dư không đủ để mua tài khoản này!` });
+        }
 
-    const orderId = "PRE" + Math.floor(Math.random() * 900000 + 100000);
-    const timeNow = new Date().toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' });
-    orders.push({ orderId, username: u, type: "PREMIUM", service, link: email, quantity: 1, total: cost.toLocaleString('vi-VN') + ' đ', status: "Chờ duyệt", time: timeNow });
+        user.balance -= cost;
+        await user.save();
 
-    const msg = `🔑 ĐƠN MUA APP PREMIUM: ${u}\n🆔 Mã đơn: ${orderId}\n📦 Ứng dụng: ${service}\n📧 Email nhận: ${email}\n💰 Giá trừ: ${cost.toLocaleString('vi-VN')} đ`;
-    await sendToTelegram(msg);
-    return res.json({ success: true });
+        const orderId = "PRE" + Math.floor(100000 + Math.random() * 900000);
+        await Order.create({ orderId, username: u, type: "PREMIUM", service, link: email, quantity: 1, total: cost.toLocaleString('vi-VN') + ' đ', status: 'Chờ duyệt' });
+
+        const msg = `🔑 ĐƠN MUA APP PREMIUM!\n👤 Tài khoản mua: ${u}\n📦 Gói mua: ${service}\n📧 Email nhận acc: ${email}\n💰 Số tiền trừ: ${cost.toLocaleString('vi-VN')} đ`;
+        await sendToTelegram(msg);
+
+        return res.json({ success: true, message: "Đặt mua App Premium thành công!" });
+    } catch(e) {
+        return res.json({ success: false, message: "Lỗi mua tài khoản Premium!" });
+    }
 });
 
-// API BÁO NẠP TIỀN
+// API THÔNG BÁO YÊU CẦU NẠP TIỀN & LƯU LỊCH SỬ CHỜ DUYỆT
 app.post('/api/deposit-alert', async (req, res) => {
     const { username, amount } = req.body;
     const u = username.toUpperCase().trim();
-    const depositId = "NAP" + Math.floor(Math.random() * 900000 + 100000);
-    const timeNow = new Date().toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' });
     
-    deposits.push({ depositId, username: u, amount: parseInt(amount), status: "Chờ duyệt", time: timeNow });
-
-    await sendToTelegram(`💰 KHÁCH BÁO NẠP TIỀN!\n🆔 Mã nạp: ${depositId}\n👤 Khách: ${u}\n💵 Số tiền: ${parseInt(amount).toLocaleString('vi-VN')} đ\n👉 Vào web duyệt nạp tiền nhanh Sếp ơi!`);
-    return res.json({ success: true });
-});
-
-// API ĐỒNG BỘ DATA CHO TRANG ADMIN CHẠY THẬT
-app.get('/api/admin/data', (req, res) => {
-    const userList = Object.keys(users).map(key => ({
-        username: key, password: users[key].password, balance: users[key].balance, email: users[key].email
-    }));
-    return res.json({ success: true, users: userList, deposits, orders });
-});
-
-// API ADMIN DUYỆT CỘNG TIỀN THẬT TRÊN WEB
-app.post('/api/admin/approve-deposit', (req, res) => {
-    const { depositId } = req.body;
-    const dep = deposits.find(d => d.depositId === depositId);
-    if (!dep || dep.status !== "Chờ duyệt") return res.json({ success: false, message: "Yêu cầu không hợp lệ" });
-    
-    if (users[dep.username]) {
-        users[dep.username].balance += dep.amount;
-        dep.status = "Đã duyệt";
-        sendToTelegram(`✅ ADMIN ĐÃ DUYỆT NẠP TIỀN!\n👤 Khách: ${dep.username}\n💵 Số tiền cộng: +${dep.amount.toLocaleString('vi-VN')} đ\n💳 Số dư mới: ${users[dep.username].balance.toLocaleString('vi-VN')} đ`);
+    try {
+        const depId = "NAP" + Math.floor(100000 + Math.random() * 900000);
+        await Deposit.create({ depositId: depId, username: u, amount: parseInt(amount), status: 'Chờ duyệt' });
+        
+        await sendToTelegram(`💰 KHÁCH BÁO CHUYỂN KHOẢN!\n🆔 Mã nạp: ${depId}\n👤 Khách: ${u}\n💵 Số tiền: ${parseInt(amount).toLocaleString('vi-VN')} đ\n👉 Vui lòng check ngân hàng và duyệt trên bảng Admin!`);
         return res.json({ success: true });
+    } catch(err) {
+        return res.json({ success: false });
     }
-    return res.json({ success: false, message: "User không tồn tại" });
 });
 
-// API ADMIN ĐỔI TRẠNG THÁI ĐƠN HÀNG THẬT TRÊN WEB
-app.post('/api/admin/update-order', (req, res) => {
+// API TRẢ VỀ DỮ LIỆU ĐỂ HIỂN THỊ LÊN TRANG ADMIN WEB & LỊCH SỬ KHÁCH (KÉO TỪ DATABASE)
+app.get('/api/admin/data', async (req, res) => {
+    try {
+        const dbUsers = await User.find({});
+        const dbOrders = await Order.find({});
+        const dbDeposits = await Deposit.find({});
+
+        const userList = dbUsers.map(u => ({
+            username: u.username,
+            password: u.password,
+            balance: u.balance,
+            email: u.email
+        }));
+
+        return res.json({ 
+            success: true, 
+            users: userList, 
+            deposits: dbDeposits, 
+            orders: dbOrders 
+        });
+    } catch (err) {
+        return res.json({ success: false, users: [], deposits: [], orders: [] });
+    }
+});
+
+// ADMIN DUYỆT CỘNG TIỀN NẠP
+app.post('/api/admin/approve-deposit', async (req, res) => {
+    const { depositId } = req.body;
+    try {
+        const dep = await Deposit.findOne({ depositId });
+        if (!dep || dep.status !== 'Chờ duyệt') return res.json({ success: false });
+
+        const user = await User.findOne({ username: dep.username });
+        if (user) {
+            user.balance += dep.amount;
+            await user.save();
+            dep.status = 'Đã duyệt';
+            await dep.save();
+            
+            await sendToTelegram(`✅ ĐÃ DUYỆT NẠP TIỀN!\n👤 Khách: ${dep.username}\n💰 Số tiền cộng: ${dep.amount.toLocaleString('vi-VN')} đ\n💳 Số dư mới: ${user.balance.toLocaleString('vi-VN')} đ`);
+            return res.json({ success: true });
+        }
+        return res.json({ success: false });
+    } catch(e) { res.json({ success: false }); }
+});
+
+// ADMIN CẬP NHẬT TRẠNG THÁI ĐƠN HÀNG
+app.post('/api/admin/update-order', async (req, res) => {
     const { orderId, status } = req.body;
-    const ord = orders.find(o => o.orderId === orderId);
-    if (!ord) return res.json({ success: false, message: "Không tìm thấy đơn hàng" });
-    
-    ord.status = status;
-    sendToTelegram(`🚀 ĐƠN HÀNG ${orderId} CHUYỂN TRẠNG THÁI -> [${status.toUpperCase()}]`);
-    return res.json({ success: true });
+    try {
+        const order = await Order.findOne({ orderId });
+        if (order) {
+            order.status = status;
+            await order.save();
+            return res.json({ success: true });
+        }
+        return res.json({ success: false });
+    } catch(e) { res.json({ success: false }); }
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Server admin realtime running on port ${PORT}`));
+app.listen(PORT, () => console.log(`🚀 Hệ thống Backend chạy mượt mà trên Cloud tại port ${PORT}`));
