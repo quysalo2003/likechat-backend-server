@@ -15,8 +15,8 @@ const TELEGRAM_TOKEN = "8899021077:AAExBxaUDO7iXXAr6Rh9cDTpkLPAG3Rd4Ks";
 const TELEGRAM_CHAT_ID = "6661039756";
 const MK_ADMIN_MUON_DAT = "cfquyy123"; 
 
-// 🔑 LINK DATABASE ĐÃ ĐỔI SANG USER ADMIN TỐI CAO CHUẨN IP 0.0.0.0/0
-const MONGO_URI = "mongodb+srv://admin:quy12345678@cluster0.11cwyvm.mongodb.net/likechat?retryWrites=true&w=majority&appName=Cluster0";
+// 🔑 LINK DATABASE ĐÃ ĐỔI SANG CHỮ l1cwyvm THEO ĐÚNG CHUỖI KẾT NỐI XỊN CỦA BỐ
+const MONGO_URI = "mongodb+srv://admin:quy12345678@cluster0.l1cwyvm.mongodb.net/likechat?retryWrites=true&w=majority&appName=Cluster0";
 
 mongoose.connect(MONGO_URI)
   .then(() => console.log("🔥 Đã kết nối Database MongoDB Atlas vĩnh viễn! Bật tắt server thoải mái không sợ mất dữ liệu!"))
