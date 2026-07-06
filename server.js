@@ -85,8 +85,8 @@ async function sendToTelegram(message) {
 
 // API ĐỒNG BỘ VÍ TIỀN REALTIME CHO KHÁCH KHI CHUYỂY TAB TRÊN WEB
 app.get('/api/user/:username', async (req, res) => {
-    const u = req.params.username.toUpperCase().trim();
     try {
+        const u = req.params.username.toUpperCase().trim();
         const user = await User.findOne({ username: u });
         if (user) {
             return res.json({ success: true, balance: user.balance });
@@ -97,10 +97,11 @@ app.get('/api/user/:username', async (req, res) => {
 
 // API ĐĂNG KÝ THÀNH VIÊN (LƯU THẲNG VÀO DATABASE)
 app.post('/api/register', async (req, res) => {
-    const { username, password, email } = req.body;
-    const u = username.toUpperCase().trim();
-    
     try {
+        const { username, password, email } = req.body;
+        if (!username || !password) return res.json({ success: false, message: "Vui lòng điền đủ thông tin!" });
+        const u = username.toUpperCase().trim();
+        
         const userExist = await User.findOne({ username: u });
         if (userExist) return res.json({ success: false, message: "Tài khoản đã tồn tại!" });
         
@@ -114,10 +115,11 @@ app.post('/api/register', async (req, res) => {
 
 // API ĐĂNG NHẬP HỆ THỐNG
 app.post('/api/login', async (req, res) => {
-    const { username, password } = req.body;
-    const u = username.toUpperCase().trim();
-    
     try {
+        const { username, password } = req.body;
+        if (!username || !password) return res.json({ success: false, message: "Vui lòng điền đủ thông tin!" });
+        const u = username.toUpperCase().trim();
+        
         const user = await User.findOne({ username: u });
         if (!user || user.password !== password) {
             return res.json({ success: false, message: "Sai tài khoản hoặc mật khẩu!" });
@@ -130,11 +132,13 @@ app.post('/api/login', async (req, res) => {
 
 // API ĐẶT ĐƠN TĂNG LIKE/FOLLOW (XỬ LÝ TRỪ TIỀN VÀ LƯU LỊCH SỬ CHẾT)
 app.post('/api/order-mxh', async (req, res) => {
-    const { username, platform, service, link, quantity, total } = req.body;
-    const u = username.toUpperCase().trim();
-    const cost = parseInt(total.replace(/[^0-9]/g, ''));
-    
     try {
+        const { username, platform, service, link, quantity, total } = req.body;
+        const u = username.toUpperCase().trim();
+        
+        const totalStr = String(total || "0");
+        const cost = parseInt(totalStr.replace(/[^0-9]/g, '')) || 0;
+        
         const user = await User.findOne({ username: u });
         if (!user) return res.json({ success: false, message: "Tài khoản không tồn tại!" });
         
@@ -142,13 +146,11 @@ app.post('/api/order-mxh', async (req, res) => {
             return res.json({ success: false, message: `Số dư không đủ! Mày cần thêm ${(cost - user.balance).toLocaleString('vi-VN')} đ để hoàn thành đơn.` });
         }
         
-        // Khấu trừ số dư của khách trên database
         user.balance -= cost;
         await user.save();
         
-        // Lưu lịch sử đơn hàng vào database
         const orderId = "MXH" + Math.floor(100000 + Math.random() * 900000);
-        await Order.create({ orderId, username: u, type: platform.toUpperCase(), service, link, quantity, total, status: 'Đang chạy' });
+        await Order.create({ orderId, username: u, type: platform.toUpperCase(), service, link, quantity, total: totalStr, status: 'Đang chạy' });
         
         const msg = `🛒 ĐƠN HÀNG MXH MỚI TỪ: ${u}\n` +
                     `🆔 Mã đơn: ${orderId}\n` +
@@ -156,7 +158,7 @@ app.post('/api/order-mxh', async (req, res) => {
                     `🛠️ Dịch vụ: ${service}\n` +
                     `🔗 Link mục tiêu: ${link}\n` +
                     `📦 Số lượng: ${quantity}\n` +
-                    `💰 Tổng tiền trừ: ${total}\n` +
+                    `💰 Tổng tiền trừ: ${cost.toLocaleString('vi-VN')} đ\n` +
                     `💳 Số dư còn lại: ${user.balance.toLocaleString('vi-VN')} đ`;
                     
         await sendToTelegram(msg);
@@ -168,11 +170,11 @@ app.post('/api/order-mxh', async (req, res) => {
 
 // API MUA APP PREMIUM (ĐỒNG BỘ THEO DẠNG CARD MỚI)
 app.post('/api/order-premium', async (req, res) => {
-    const { username, service, email, price } = req.body;
-    const u = username.toUpperCase().trim();
-    const cost = parseInt(price);
-
     try {
+        const { username, service, email, price } = req.body;
+        const u = username.toUpperCase().trim();
+        const cost = parseInt(price) || 0;
+
         const user = await User.findOne({ username: u });
         if (!user) return res.json({ success: false, message: "Tài khoản không tồn tại!" });
 
@@ -197,12 +199,12 @@ app.post('/api/order-premium', async (req, res) => {
 
 // API THÔNG BÁO YÊU CẦU NẠP TIỀN & LƯU LỊCH SỬ CHỜ DUYỆT
 app.post('/api/deposit-alert', async (req, res) => {
-    const { username, amount } = req.body;
-    const u = username.toUpperCase().trim();
-    
     try {
+        const { username, amount } = req.body;
+        const u = username.toUpperCase().trim();
+        
         const depId = "NAP" + Math.floor(100000 + Math.random() * 900000);
-        await Deposit.create({ depositId: depId, username: u, amount: parseInt(amount), status: 'Chờ duyệt' });
+        await Deposit.create({ depositId: depId, username: u, amount: parseInt(amount) || 0, status: 'Chờ duyệt' });
         
         await sendToTelegram(`💰 KHÁCH BÁO CHUYỂN KHOẢN!\n🆔 Mã nạp: ${depId}\n👤 Khách: ${u}\n💵 Số tiền: ${parseInt(amount).toLocaleString('vi-VN')} đ\n👉 Vui lòng check ngân hàng và duyệt trên bảng Admin!`);
         return res.json({ success: true });
@@ -238,8 +240,8 @@ app.get('/api/admin/data', async (req, res) => {
 
 // ADMIN DUYỆT CỘNG TIỀN NẠP
 app.post('/api/admin/approve-deposit', async (req, res) => {
-    const { depositId } = req.body;
     try {
+        const { depositId } = req.body;
         const dep = await Deposit.findOne({ depositId });
         if (!dep || dep.status !== 'Chờ duyệt') return res.json({ success: false });
 
@@ -259,8 +261,8 @@ app.post('/api/admin/approve-deposit', async (req, res) => {
 
 // ADMIN CẬP NHẬT TRẠNG THÁI ĐƠN HÀNG
 app.post('/api/admin/update-order', async (req, res) => {
-    const { orderId, status } = req.body;
     try {
+        const { orderId, status } = req.body;
         const order = await Order.findOne({ orderId });
         if (order) {
             order.status = status;
