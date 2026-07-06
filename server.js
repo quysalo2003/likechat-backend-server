@@ -15,8 +15,8 @@ const TELEGRAM_TOKEN = "8899021077:AAExBxaUDO7iXXAr6Rh9cDTpkLPAG3Rd4Ks";
 const TELEGRAM_CHAT_ID = "6661039756";
 const MK_ADMIN_MUON_DAT = "cfquyy123"; 
 
-// 🔑 LINK DATABASE MONGODB ATLAS CHÍNH CHỦ CỦA SẾP QUÝ (RÁP TỪ SCREENSHOT 72)
-const MONGO_URI = "mongodb+srv://quyhapy2003_db_user:QQ9Gr9VGJYfMuOUo@cluster0.11cwyvm.mongodb.net/likechat?retryWrites=true&w=majority&appName=Cluster0";
+// 🔑 LINK DATABASE ĐÃ ĐỔI SANG USER ADMIN TỐI CAO CHUẨN IP 0.0.0.0/0
+const MONGO_URI = "mongodb+srv://admin:quy12345678@cluster0.11cwyvm.mongodb.net/likechat?retryWrites=true&w=majority&appName=Cluster0";
 
 mongoose.connect(MONGO_URI)
   .then(() => console.log("🔥 Đã kết nối Database MongoDB Atlas vĩnh viễn! Bật tắt server thoải mái không sợ mất dữ liệu!"))
@@ -83,7 +83,7 @@ async function sendToTelegram(message) {
     }
 }
 
-// API ĐỒNG BỘ VÍ TIỀN REALTIME CHO KHÁCH KHI CHUYỂN TAB TRÊN WEB
+// API ĐỒNG BỘ VÍ TIỀN REALTIME CHO KHÁCH KHI CHUYỂY TAB TRÊN WEB
 app.get('/api/user/:username', async (req, res) => {
     const u = req.params.username.toUpperCase().trim();
     try {
